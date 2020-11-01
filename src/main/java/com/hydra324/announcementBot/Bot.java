@@ -16,6 +16,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class Bot {
     private static final Map<String, Command> commands = new HashMap<>();
@@ -34,8 +35,9 @@ public class Bot {
         NEWCHANNEL,
     }
 
-    public static void main(String[] args) {
-        final String TOKEN = "NzYxNjI3NzI3NTg4NjIyMzY2.X3dXGA.KDQAXu83L-3kErnfprNO6CtiTRc";
+    public static void main(String[] args) throws CustomException{
+        final String TOKEN = Optional.ofNullable(System.getenv("ANNOUNCEMENT_BOT_TOKEN")).orElseThrow(
+                () -> new CustomException("ANNOUNCEMENT_BOT_TOKEN is not set in the environment"));
 
         // Build the audio provider
         TTSAudioProvider provider;
