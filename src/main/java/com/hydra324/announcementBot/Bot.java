@@ -1,5 +1,10 @@
 package com.hydra324.announcementBot;
 
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBuffer;
 import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
@@ -9,11 +14,10 @@ import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.User;
 import discord4j.core.object.entity.channel.Channel;
 import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.voice.AudioProvider;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.FileOutputStream;
-import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,8 +27,6 @@ public class Bot {
 
     static {
         commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Pong!")).then());
-
-//        commands.put("announce")
     }
 
     enum UserVoiceState {
@@ -35,11 +37,23 @@ public class Bot {
     }
 
     public static void main(String[] args) {
+
+        // Creates AudioPlayer instances and translates URLs to AudioTrack instances
+        final AudioPlayerManager playerManager = new DefaultAudioPlayerManager();
+// This is an optimization strategy that Discord4J can utilize. It is not important to understand
+        playerManager.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
+// Allow playerManager to parse remote sources like YouTube links
+        AudioSourceManagers.registerRemoteSources(playerManager);
+// Create an AudioPlayer so Discord4J can receive audio data
+        final AudioPlayer player = playerManager.createPlayer();
+// We will be creating LavaPlayerAudioProvider in the next step
+        AudioProvider provider = new LavaPlayerAudioProvider(player);
+
         final String TOKEN = "NzYxNjI3NzI3NTg4NjIyMzY2.X3dXGA.KDQAXu83L-3kErnfprNO6CtiTRc";
 
-        // Build the audio provider
-        TTSAudioProvider provider;
-        provider = new TTSAudioProvider();
+//        // Build the audio provider
+//        TTSAudioProvider provider;
+//        provider = new TTSAudioProvider();
 
         final DiscordClient client = DiscordClient.create(TOKEN);
         final GatewayDiscordClient gateway = client.login().block();
@@ -72,7 +86,7 @@ public class Bot {
                     }
                 })
                 .map(voiceConnection -> {
-                    provider.announce(username);
+//                    provider.announce(username);
                     return voiceConnection.disconnect();
                 }).subscribe();
 
@@ -97,16 +111,4 @@ public class Bot {
         }
         return UserVoiceState.DISCONNECTED;
     }
-
-//    public static void main(String[] args){
-//        TTSFrameProvider provider =  new TTSFrameProvider();
-//        try{
-//            try (OutputStream out = new FileOutputStream("output.ogg")) {
-//                out.write(provider.tts("hi I am Akhil"));
-//                System.out.println("Audio content written to file \"output.ogg\"");
-//            }
-//        } catch (Exception e){
-//            e.printStackTrace();
-//        }
-//    }
 }

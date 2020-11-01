@@ -23,13 +23,10 @@ public class TTSFrameProvider {
             ByteString audioContents = response.getAudioContent();
 
             return audioContents.toByteArray();
-
-//            byte[] pcm = audioContents.toByteArray();
-//
-//            return convertToStereoAndPadToFitFrameSize(pcm);
         }
     }
 
+    /* Deprecated for this branch - no need to covert to stereo since we are using lava player which internally does convert based on audio encoding */
     private byte[] convertToStereoAndPadToFitFrameSize(byte[] pcm) {
         // Three things need to happen - big endian, stereo, pad to a multiple of 3840
         // Add a frame of silence at the beginning so that the sound doesn't clip weirdly
@@ -50,5 +47,4 @@ public class TTSFrameProvider {
         return converted;
 
     }
-
 }
