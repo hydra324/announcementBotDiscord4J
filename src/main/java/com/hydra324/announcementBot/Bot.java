@@ -36,7 +36,6 @@ public class Bot {
     }
 
     public static void main(String[] args) throws CustomException{
-//        final String TOKEN = System.getenv("ANNOUNCEMENT_BOT_TOKEN");
         final String TOKEN = Optional.ofNullable(System.getenv("ANNOUNCEMENT_BOT_TOKEN")).orElseThrow(
                 () -> new CustomException("ANNOUNCEMENT_BOT_TOKEN is not set in the environment"));
 
