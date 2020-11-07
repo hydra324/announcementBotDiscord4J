@@ -1,16 +1,45 @@
 package com.hydra324.announcementBot;
 
-import com.google.cloud.texttospeech.v1beta1.*;
+import com.google.cloud.texttospeech.v1beta1.AudioConfig;
+import com.google.cloud.texttospeech.v1beta1.AudioEncoding;
+import com.google.cloud.texttospeech.v1beta1.SsmlVoiceGender;
+import com.google.cloud.texttospeech.v1beta1.SynthesisInput;
+import com.google.cloud.texttospeech.v1beta1.SynthesizeSpeechResponse;
+import com.google.cloud.texttospeech.v1beta1.TextToSpeechClient;
+import com.google.cloud.texttospeech.v1beta1.VoiceSelectionParams;
 import com.google.protobuf.ByteString;
+import com.sedmelluq.discord.lavaplayer.format.StandardAudioDataFormats;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.track.playback.MutableAudioFrame;
+import discord4j.voice.AudioProvider;
+import reactor.core.publisher.Mono;
 
-public class TTSFrameProvider {
-    public static final int AUDIO_FRAME = 3840; // 48000 / 50 (number of 20 ms in a second) * 2 (16-bit samples) * 2 (channels)
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
 
+public class TTSFrameProvider extends AudioProvider {
+    private final MutableAudioFrame frame = new MutableAudioFrame();
+    private final AudioPlayer player;
 
+    public TTSFrameProvider(AudioPlayer player) {
+        super(ByteBuffer.allocate(StandardAudioDataFormats.DISCORD_OPUS.maximumChunkSize()));
+        this.player = player;
+        this.frame.setBuffer(getBuffer());
+    }
 
-    TTSFrameProvider() {}
+    @Override
+    public boolean provide() {
+        // AudioPlayer writes audio data to its AudioFrame
+        final boolean didProvide = player.provide(frame);
+        // If audio was provided, flip from write-mode to read-mode
+        if (didProvide) {
+            getBuffer().flip();
+        }
+        return didProvide;
+    }
 
-     byte[] tts(String text) throws Exception{
+    Mono<Boolean> tts(String text){
         try(TextToSpeechClient client = TextToSpeechClient.create()){
             SynthesisInput input = SynthesisInput.newBuilder().setText(text).build();
 
@@ -22,33 +51,17 @@ public class TTSFrameProvider {
 
             ByteString audioContents = response.getAudioContent();
 
-            return audioContents.toByteArray();
-
-//            byte[] pcm = audioContents.toByteArray();
-//
-//            return convertToStereoAndPadToFitFrameSize(pcm);
+            try (OutputStream outputStream = new FileOutputStream("output.ogg")){
+                outputStream.write(audioContents.toByteArray());
+                System.out.println("Audio content written to file \"output.ogg\"");
+                return Mono.just(true);
+            } catch (Exception e){
+                e.printStackTrace();
+                return Mono.just(false);
+            }
+        } catch (Exception e){
+            e.printStackTrace();
+            return Mono.just(false);
         }
     }
-
-    private byte[] convertToStereoAndPadToFitFrameSize(byte[] pcm) {
-        // Three things need to happen - big endian, stereo, pad to a multiple of 3840
-        // Add a frame of silence at the beginning so that the sound doesn't clip weirdly
-        byte[] converted = new byte[AUDIO_FRAME + pcm.length * 2 + (AUDIO_FRAME - pcm.length * 2 % AUDIO_FRAME)];
-        // ensures converted is a multiple of AUDIO_FRAME
-        for(int i = AUDIO_FRAME; i < pcm.length; i += 2) {
-            short reversed = Short.reverseBytes((short) ((pcm[i] << 8) | (pcm[i + 1] & 0xFF)));
-            byte low = (byte) (reversed >> 8);
-            byte high = (byte) (reversed & 0x00FF);
-
-            // reverse bytes and double to convert to stereo
-            converted[i * 2] = low;
-            converted[i * 2 + 1] = high;
-            converted[i * 2 + 2] = low;
-            converted[i * 2 + 3] = high;
-        }
-
-        return converted;
-
-    }
-
 }
