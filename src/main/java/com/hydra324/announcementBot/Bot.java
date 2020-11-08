@@ -10,7 +10,6 @@ import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.VoiceStateUpdateEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
-import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.User;
 import discord4j.voice.VoiceConnection;
 import reactor.core.Disposable;
@@ -19,6 +18,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 public class Bot {
@@ -41,14 +41,22 @@ public class Bot {
         ttsAudioResultHandler = new TTSAudioResultHandler(trackScheduler);
         ttsFrameProvider = new TTSFrameProvider(player);
 
-        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Pong!")).then());
+        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("sup? wanna see my commands? use $help")).then());
+        commands.put("help", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Only [join,leave,ping,help] commands for now")).then());
         commands.put("join", event ->
             Mono.justOrEmpty(event.getMember())
-                    .flatMap(Member::getVoiceState)
-                    .flatMap(VoiceState::getChannel)
-                    .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
-                    .map(voiceConnection -> voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates())
-                    .then());
+                    .flatMap(member -> {
+                        VoiceState voiceState = member.getVoiceState().block();
+                        if(voiceState == null){
+                            return event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage(String.valueOf(Character.toChars(10060)) + "You must be in a voice channel to use this command"));
+                        } else {
+                            return Mono.just(voiceState)
+                                    .flatMap(VoiceState::getChannel)
+                                    .filter(Objects::nonNull)
+                                    .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
+                                    .map(voiceConnection -> voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates());
+                        }
+                    }).then());
         commands.put("leave", event -> {
             voiceStateUpdateEventSubscription.dispose();
             return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get()).flatMap(VoiceConnection::disconnect);
@@ -70,7 +78,6 @@ public class Bot {
         gateway = client.login().block();
 
         gateway.getEventDispatcher().on(MessageCreateEvent.class)
-                // 3.1 Message.getContent() is a String
                 .flatMap(event -> Mono.just(event.getMessage().getContent())
                         .flatMap(content -> Flux.fromIterable(commands.entrySet())
                                 // We will be using $ as our "prefix" to any command in the system.
