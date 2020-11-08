@@ -1,31 +1,66 @@
 package com.hydra324.announcementBot;
 
-import discord4j.common.util.Snowflake;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.track.playback.NonAllocatingAudioFrameBuffer;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.VoiceStateUpdateEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.User;
-import discord4j.core.object.entity.channel.Channel;
-import discord4j.core.object.entity.channel.TextChannel;
+import discord4j.voice.VoiceConnection;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.FileOutputStream;
-import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 public class Bot {
     private static final Map<String, Command> commands = new HashMap<>();
     private static String username;
 
-    static {
-        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Pong!")).then());
+    private static GatewayDiscordClient gateway;
+    private static Disposable voiceStateUpdateEventSubscription;
+    private static AudioPlayerManager playerManager;
+    private static TTSAudioResultHandler ttsAudioResultHandler;
+    private static TTSFrameProvider ttsFrameProvider;
 
-//        commands.put("announce")
+    static {
+        playerManager = new DefaultAudioPlayerManager();
+        playerManager.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
+        AudioSourceManagers.registerLocalSource(playerManager);
+        AudioPlayer player = playerManager.createPlayer();
+        TrackScheduler trackScheduler = new TrackScheduler(player);
+        player.addListener(trackScheduler);
+        ttsAudioResultHandler = new TTSAudioResultHandler(trackScheduler);
+        ttsFrameProvider = new TTSFrameProvider(player);
+
+        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("sup? wanna see my commands? use $help")).then());
+        commands.put("help", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Only [join,leave,ping,help] commands for now")).then());
+        commands.put("join", event ->
+            Mono.justOrEmpty(event.getMember())
+                    .flatMap(member -> {
+                        VoiceState voiceState = member.getVoiceState().block();
+                        if(voiceState == null){
+                            return event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage(String.valueOf(Character.toChars(10060)) + "You must be in a voice channel to use this command"));
+                        } else {
+                            return Mono.just(voiceState)
+                                    .flatMap(VoiceState::getChannel)
+                                    .filter(Objects::nonNull)
+                                    .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
+                                    .map(voiceConnection -> voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates());
+                        }
+                    }).then());
+        commands.put("leave", event -> {
+            voiceStateUpdateEventSubscription.dispose();
+            return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get()).flatMap(VoiceConnection::disconnect);
+        });
     }
 
     enum UserVoiceState {
@@ -35,48 +70,21 @@ public class Bot {
         NEWCHANNEL,
     }
 
-    public static void main(String[] args) throws CustomException{
+    public static void main(String[] args) throws CustomException {
         final String TOKEN = Optional.ofNullable(System.getenv("ANNOUNCEMENT_BOT_TOKEN")).orElseThrow(
                 () -> new CustomException("ANNOUNCEMENT_BOT_TOKEN is not set in the environment"));
 
-        // Build the audio provider
-        TTSAudioProvider provider;
-        provider = new TTSAudioProvider();
-
-        final DiscordClient client = DiscordClient.create(TOKEN);
-        final GatewayDiscordClient gateway = client.login().block();
+        DiscordClient client = DiscordClient.create(TOKEN);
+        gateway = client.login().block();
 
         gateway.getEventDispatcher().on(MessageCreateEvent.class)
-                // 3.1 Message.getContent() is a String
                 .flatMap(event -> Mono.just(event.getMessage().getContent())
                         .flatMap(content -> Flux.fromIterable(commands.entrySet())
-                                // We will be using ! as our "prefix" to any command in the system.
-                                .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                // We will be using $ as our "prefix" to any command in the system.
+                                .filter(entry -> content.startsWith('$' + entry.getKey()))
                                 .flatMap(entry -> entry.getValue().execute(event))
                                 .next()))
                 .subscribe();
-
-
-        gateway.getEventDispatcher().on(VoiceStateUpdateEvent.class)
-                .filterWhen(voiceStateUpdateEvent -> voiceStateUpdateEvent.getCurrent().getUser().map(user -> !user.isBot()))
-                .flatMap(voiceStateUpdateEvent -> {
-                    username = voiceStateUpdateEvent.getCurrent().getUser().map(User::getUsername).block();
-                    Snowflake announcementsChannelId = voiceStateUpdateEvent.getCurrent().getGuild().map(guild -> guild.getChannels().filter(channel -> channel.getName().equalsIgnoreCase("announcements")).map(Channel::getId).single().block()).block();
-                    TextChannel announcementsChannel = gateway.getChannelById(announcementsChannelId).ofType(TextChannel.class).block();
-                    if(Bot.hasJoinedChannel(voiceStateUpdateEvent) == UserVoiceState.CONNECTED){
-                        announcementsChannel.createMessage(username + "has joined").block();
-                        return voiceStateUpdateEvent.getCurrent().getChannel().flatMap(voiceChannel -> voiceChannel.join(voiceChannelJoinSpec -> voiceChannelJoinSpec.setProvider(provider)));
-                    } else if (Bot.hasJoinedChannel(voiceStateUpdateEvent) == UserVoiceState.DISCONNECTED){
-                        announcementsChannel.createMessage(username + "has left").block();
-                        return voiceStateUpdateEvent.getOld().get().getChannel().flatMap(voiceChannel -> voiceChannel.join(voiceChannelJoinSpec -> voiceChannelJoinSpec.setProvider(provider)));
-                    } else {
-                        return Mono.empty();
-                    }
-                })
-                .map(voiceConnection -> {
-                    provider.announce(username);
-                    return voiceConnection.disconnect();
-                }).subscribe();
 
         gateway.onDisconnect().block();
     }
@@ -100,15 +108,21 @@ public class Bot {
         return UserVoiceState.DISCONNECTED;
     }
 
-//    public static void main(String[] args){
-//        TTSFrameProvider provider =  new TTSFrameProvider();
-//        try{
-//            try (OutputStream out = new FileOutputStream("output.ogg")) {
-//                out.write(provider.tts("hi I am Akhil"));
-//                System.out.println("Audio content written to file \"output.ogg\"");
-//            }
-//        } catch (Exception e){
-//            e.printStackTrace();
-//        }
-//    }
+    private static Disposable subscribeToVoiceStateUpdates(){
+        return gateway.getEventDispatcher().on(VoiceStateUpdateEvent.class)
+                .filterWhen(voiceStateUpdateEvent -> voiceStateUpdateEvent.getCurrent().getUser().map(user -> !user.isBot()))
+                .flatMap(voiceStateUpdateEvent -> {
+                    username = voiceStateUpdateEvent.getCurrent().getUser().map(User::getUsername).block();
+                    if(Bot.hasJoinedChannel(voiceStateUpdateEvent) == UserVoiceState.CONNECTED){
+                        return ttsFrameProvider.tts(username + "has joined");
+                    } else if (Bot.hasJoinedChannel(voiceStateUpdateEvent) == UserVoiceState.DISCONNECTED){
+                        return ttsFrameProvider.tts(username + "has left");
+                    } else {
+                        return Mono.just(false);
+                    }
+                })
+                .filter(value -> value)
+                .map(value -> playerManager.loadItem("output.ogg", ttsAudioResultHandler))
+                .then().subscribe();
+    }
 }
