@@ -26,3 +26,7 @@ jar {
         attributes 'Main-Class': 'com.hydra324.announcementBot.Bot'
     }
 }
+
+shadowJar {
+    archiveFileName = "Announcement-Bot-${version}-fat.jar"
+}
