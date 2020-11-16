@@ -2,7 +2,7 @@ FROM openjdk:11.0.9.1-jdk AS TEMP_BUILD_IMAGE
 ENV APP_HOME=/usr/app/
 WORKDIR $APP_HOME
 COPY build.gradle settings.gradle gradlew $APP_HOME
-COPY gradle $APP_HOME/gradle
+COPY .gradle $APP_HOME/.gradle
 RUN ./gradlew build shadowJar || return 0
 COPY . .
 RUN ./gradlew build shadowJar
