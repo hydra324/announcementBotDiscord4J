@@ -2,7 +2,7 @@ FROM gradle:6.6.0-jdk11 AS TEMP_BUILD_IMAGE
 ENV APP_HOME=/home/gradle/src
 COPY --chown=gradle:gradle . $APP_HOME
 WORKDIR $APP_HOME
-RUN gradlew build shadowJar --no-daemon
+RUN gradle build shadowJar --no-daemon
 
 FROM openjdk:11.0.9.1-jre
 ENV ARTIFACT_NAME=Announcement-Bot-1.0-SNAPSHOT-fat.jar
