@@ -10,4 +10,6 @@ ENV ARTIFACT_NAME=Announcement-Bot-1.0-SNAPSHOT-fat.jar
 ENV APP_HOME=/home/gradle/src
 RUN mkdir /app
 COPY --from=TEMP_BUILD_IMAGE $APP_HOME/build/libs/$ARTIFACT_NAME /app/$ARTIFACT_NAME
+COPY --from=TEMP_BUILD_IMAGE $APP_HOME/google_credentials.sh /app/google_credentials.sh
+ENTRYPOINT ["sh", "/app/google_credentials.sh"]
 CMD java -jar /app/$ARTIFACT_NAME
