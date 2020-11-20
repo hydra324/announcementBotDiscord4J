@@ -8,7 +8,7 @@ Announcement Bot announce who joins/leaves a discord voice channel
 - Lavaplayer
 
 # To run the container on your local host machine
-##Environment variables to be set
+### Environment variables to be set
 - ANNOUNCEMENT_BOT_TOKEN
 - GOOGLE_APPLICATION_CREDENTIALS
 
