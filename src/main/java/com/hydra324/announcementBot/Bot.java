@@ -73,8 +73,14 @@ public class Bot {
                         }
                     }).then());
         commands.put("leave", event -> {
-            voiceStateUpdateEventSubscription.dispose();
-            return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get()).flatMap(VoiceConnection::disconnect);
+            return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get())
+                    .flatMap(voiceConnection -> {
+                        voiceStateUpdateEventSubscription.dispose();
+                        voiceConnection.disconnect().block();
+                        return Mono.just("Disconnected from Voice data");
+                    })
+                    .switchIfEmpty(event.getMessage().getChannel().flatMap(channel -> channel.createEmbed(spec -> spec.setColor(Color.RED).setTitle(String.valueOf(Character.toChars(10060)) + " Bot isn't in voice channel"))).flatMap(message -> Mono.just("No voice connection to diconnect from")))
+                    .then();
         });
     }
 
