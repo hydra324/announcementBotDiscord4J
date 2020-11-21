@@ -11,6 +11,7 @@ import discord4j.core.event.domain.VoiceStateUpdateEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.User;
+import discord4j.rest.util.Color;
 import discord4j.voice.VoiceConnection;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -42,7 +43,11 @@ public class Bot {
         ttsFrameProvider = new TTSFrameProvider(player);
 
         commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("sup? wanna see my commands? use $help")).then());
-        commands.put("help", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("Only [join,leave,ping,help] commands for now")).then());
+        commands.put("help", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createEmbed( spec -> spec
+                .setColor(Color.MEDIUM_SEA_GREEN)
+                .setTitle("Nice to have you here mate!")
+                .addField("To make the bot join voice channel:","```$join```", false)
+                .addField("To make bot leave voice channel:","```$leave```",false))).then());
         commands.put("join", event ->
             Mono.justOrEmpty(event.getMember())
                     .flatMap(member -> {
