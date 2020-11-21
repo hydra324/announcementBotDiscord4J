@@ -12,7 +12,6 @@ import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.User;
 import discord4j.rest.util.Color;
-import discord4j.voice.VoiceConnection;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -23,6 +22,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class Bot {
+    private static final EnvProperty envProperty = (String prop) ->
+            Optional.ofNullable(System.getenv(prop))
+                    .orElseThrow(() -> new CustomException(String.format("%s is not set in the environment",prop)));
+    private static final String PREFIX;
     private static final Map<String, Command> commands = new HashMap<>();
     private static String username;
 
@@ -42,12 +45,15 @@ public class Bot {
         ttsAudioResultHandler = new TTSAudioResultHandler(trackScheduler);
         ttsFrameProvider = new TTSFrameProvider(player);
 
-        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage("sup? wanna see my commands? use $help")).then());
+        // get prefix
+        PREFIX = getPrefix();
+
+        commands.put("ping", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage(String.format("sup? wanna see my commands? use %shelp",PREFIX))).then());
         commands.put("help", event -> event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createEmbed( spec -> spec
                 .setColor(Color.MEDIUM_SEA_GREEN)
                 .setTitle("Nice to have you here mate!")
-                .addField("To make the bot join voice channel:","```$join```", false)
-                .addField("To make the bot leave voice channel:","```$leave```",false))).then());
+                .addField("To make the bot join voice channel:",String.format("```%sjoin```",PREFIX), false)
+                .addField("To make the bot leave voice channel:",String.format("```%sleave```",PREFIX),false))).then());
         commands.put("join", event ->
             Mono.justOrEmpty(event.getMember())
                     .flatMap(member -> {
@@ -80,17 +86,16 @@ public class Bot {
     }
 
     public static void main(String[] args) throws CustomException {
-        final String TOKEN = Optional.ofNullable(System.getenv("ANNOUNCEMENT_BOT_TOKEN")).orElseThrow(
-                () -> new CustomException("ANNOUNCEMENT_BOT_TOKEN is not set in the environment"));
+        // Check for GOOGLE CREDENTIALS
+        envProperty.getEnvProperty(PropertyConstants.GOOGLE_CREDENTIALS);
 
-        DiscordClient client = DiscordClient.create(TOKEN);
+        DiscordClient client = DiscordClient.create(envProperty.getEnvProperty(PropertyConstants.BOT_TOKEN));
         gateway = client.login().block();
 
         gateway.getEventDispatcher().on(MessageCreateEvent.class)
                 .flatMap(event -> Mono.just(event.getMessage().getContent())
                         .flatMap(content -> Flux.fromIterable(commands.entrySet())
-                                // We will be using $ as our "prefix" to any command in the system.
-                                .filter(entry -> content.startsWith('$' + entry.getKey()))
+                                .filter(entry -> content.startsWith(PREFIX + entry.getKey()))
                                 .flatMap(entry -> entry.getValue().execute(event))
                                 .next()))
                 .subscribe();
@@ -133,5 +138,15 @@ public class Bot {
                 .filter(value -> value)
                 .map(value -> playerManager.loadItem("output.ogg", ttsAudioResultHandler))
                 .then().subscribe();
+    }
+
+    private static String getPrefix(){
+        try{
+            return envProperty.getEnvProperty(PropertyConstants.COMMANDS_PREFIX);
+        } catch (CustomException e) {
+            // swallow exception and set default prefix, but log trace
+            e.printStackTrace();
+            return PropertyConstants.DEFAULT_COMMANDS_PREFIX;
+        }
     }
 }
