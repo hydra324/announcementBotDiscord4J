@@ -5,7 +5,7 @@ WORKDIR $APP_HOME
 COPY . .
 RUN gradle build shadowJar --no-daemon
 
-FROM openjdk:11.0.9.1-jre
+FROM openjdk:11.0.9.1-jre-slim
 ENV ARTIFACT_NAME=Announcement-Bot-1.0-SNAPSHOT-fat.jar
 ENV APP_HOME=/home/gradle/src
 RUN mkdir /app
