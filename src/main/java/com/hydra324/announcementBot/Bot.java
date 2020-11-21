@@ -28,9 +28,9 @@ public class Bot {
 
     private static GatewayDiscordClient gateway;
     private static Disposable voiceStateUpdateEventSubscription;
-    private static AudioPlayerManager playerManager;
-    private static TTSAudioResultHandler ttsAudioResultHandler;
-    private static TTSFrameProvider ttsFrameProvider;
+    private static final AudioPlayerManager playerManager;
+    private static final TTSAudioResultHandler ttsAudioResultHandler;
+    private static final TTSFrameProvider ttsFrameProvider;
 
     static {
         playerManager = new DefaultAudioPlayerManager();
@@ -47,13 +47,17 @@ public class Bot {
                 .setColor(Color.MEDIUM_SEA_GREEN)
                 .setTitle("Nice to have you here mate!")
                 .addField("To make the bot join voice channel:","```$join```", false)
-                .addField("To make bot leave voice channel:","```$leave```",false))).then());
+                .addField("To make the bot leave voice channel:","```$leave```",false))).then());
         commands.put("join", event ->
             Mono.justOrEmpty(event.getMember())
                     .flatMap(member -> {
                         VoiceState voiceState = member.getVoiceState().block();
                         if(voiceState == null){
-                            return event.getMessage().getChannel().flatMap(messageChannel -> messageChannel.createMessage(String.valueOf(Character.toChars(10060)) + "You must be in a voice channel to use this command"));
+                            return event.getMessage().getChannel().flatMap(messageChannel ->
+                                    messageChannel.createEmbed( spec ->
+                                            spec.setColor(Color.RED)
+                                                .setTitle(String.valueOf(Character.toChars(10060)) +
+                                                        " You must be in a voice channel to use this command")));
                         } else {
                             return Mono.just(voiceState)
                                     .flatMap(VoiceState::getChannel)
