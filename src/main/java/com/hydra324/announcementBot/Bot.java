@@ -26,7 +26,7 @@ public class Bot {
     private static final EnvProperty envProperty = (String prop) ->
             Optional.ofNullable(System.getenv(prop))
                     .orElseThrow(() -> new CustomException(String.format("%s is not set in the environment",prop)));
-    private static final String PREFIX;
+    private static String PREFIX;
     private static final Map<String, Command> commands = new HashMap<>();
     private static String username;
 
@@ -45,7 +45,18 @@ public class Bot {
         player.addListener(trackScheduler);
         ttsAudioResultHandler = new TTSAudioResultHandler(trackScheduler);
         ttsFrameProvider = new TTSFrameProvider(player);
+    }
 
+    enum UserVoiceState {
+        CONNECTED,
+        DISCONNECTED,
+        UNCHANGED,
+        NEWCHANNEL,
+    }
+
+    public static void main(String[] args) throws CustomException {
+        // Check for GOOGLE CREDENTIALS
+        envProperty.getEnvProperty(PropertyConstants.GOOGLE_CREDENTIALS);
         // get prefix
         PREFIX = getPrefix();
 
@@ -58,9 +69,9 @@ public class Bot {
         commands.put("join", event -> Mono.justOrEmpty(event.getMember())
                 .flatMap(Member::getVoiceState)
                 .flatMap(voiceState -> voiceState.getChannel()
-                .filter(Objects::nonNull)
-                .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
-                .then(Mono.fromCallable(() -> {voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates(); return "Joined Voice channel";})))
+                        .filter(Objects::nonNull)
+                        .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
+                        .then(Mono.fromCallable(() -> {voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates(); return "Joined Voice channel";})))
                 .switchIfEmpty(event.getMessage().getChannel()
                         .flatMap(messageChannel ->
                                 messageChannel.createEmbed(spec -> spec
@@ -81,18 +92,6 @@ public class Bot {
                                         .setTitle(String.valueOf(Character.toChars(10060)) + " Bot isn't in voice channel")))
                         .then(Mono.just("No voice connection to disconnect from")))
                 .then());
-    }
-
-    enum UserVoiceState {
-        CONNECTED,
-        DISCONNECTED,
-        UNCHANGED,
-        NEWCHANNEL,
-    }
-
-    public static void main(String[] args) throws CustomException {
-        // Check for GOOGLE CREDENTIALS
-        envProperty.getEnvProperty(PropertyConstants.GOOGLE_CREDENTIALS);
 
         DiscordClient client = DiscordClient.create(envProperty.getEnvProperty(PropertyConstants.BOT_TOKEN));
         gateway = client.login().block();
