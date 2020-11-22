@@ -10,6 +10,7 @@ import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.VoiceStateUpdateEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
+import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.User;
 import discord4j.rest.util.Color;
 import reactor.core.Disposable;
@@ -54,34 +55,32 @@ public class Bot {
                 .setTitle("Nice to have you here mate!")
                 .addField("To make the bot join voice channel:",String.format("```%sjoin```",PREFIX), false)
                 .addField("To make the bot leave voice channel:",String.format("```%sleave```",PREFIX),false))).then());
-        commands.put("join", event ->
-            Mono.justOrEmpty(event.getMember())
-                    .flatMap(member -> {
-                        VoiceState voiceState = member.getVoiceState().block();
-                        if(voiceState == null){
-                            return event.getMessage().getChannel().flatMap(messageChannel ->
-                                    messageChannel.createEmbed( spec ->
-                                            spec.setColor(Color.RED)
-                                                .setTitle(String.valueOf(Character.toChars(10060)) +
-                                                        " You must be in a voice channel to use this command")));
-                        } else {
-                            return Mono.just(voiceState)
-                                    .flatMap(VoiceState::getChannel)
-                                    .filter(Objects::nonNull)
-                                    .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
-                                    .map(voiceConnection -> voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates());
-                        }
-                    }).then());
-        commands.put("leave", event -> {
-            return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get())
-                    .flatMap(voiceConnection -> {
-                        voiceStateUpdateEventSubscription.dispose();
-                        voiceConnection.disconnect().block();
-                        return Mono.just("Disconnected from Voice data");
-                    })
-                    .switchIfEmpty(event.getMessage().getChannel().flatMap(channel -> channel.createEmbed(spec -> spec.setColor(Color.RED).setTitle(String.valueOf(Character.toChars(10060)) + " Bot isn't in voice channel"))).flatMap(message -> Mono.just("No voice connection to diconnect from")))
-                    .then();
-        });
+        commands.put("join", event -> Mono.justOrEmpty(event.getMember())
+                .flatMap(Member::getVoiceState)
+                .flatMap(voiceState -> voiceState.getChannel()
+                .filter(Objects::nonNull)
+                .flatMap(channel -> channel.join(spec -> spec.setProvider(ttsFrameProvider)))
+                .then(Mono.fromCallable(() -> {voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates(); return "Joined Voice channel";})))
+                .switchIfEmpty(event.getMessage().getChannel()
+                        .flatMap(messageChannel ->
+                                messageChannel.createEmbed(spec -> spec
+                                        .setColor(Color.RED)
+                                        .setTitle(String.valueOf(Character.toChars(10060)) +
+                                                " You must be in a voice channel to use this command")))
+                        .then(Mono.just("Sent error message")))
+                .then());
+        commands.put("leave", event -> gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get())
+                .flatMap(voiceConnection -> {
+                    voiceStateUpdateEventSubscription.dispose();
+                    return voiceConnection.disconnect().then(Mono.just("Disconnected from Voice connection"));
+                })
+                .switchIfEmpty(event.getMessage().getChannel()
+                        .flatMap(channel ->
+                                channel.createEmbed(spec -> spec
+                                        .setColor(Color.RED)
+                                        .setTitle(String.valueOf(Character.toChars(10060)) + " Bot isn't in voice channel")))
+                        .then(Mono.just("No voice connection to disconnect from")))
+                .then());
     }
 
     enum UserVoiceState {
