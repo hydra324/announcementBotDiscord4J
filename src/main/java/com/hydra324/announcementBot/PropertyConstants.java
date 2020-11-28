@@ -6,4 +6,5 @@ public class PropertyConstants {
     public static final String GOOGLE_CREDENTIALS = "GOOGLE_APPLICATION_CREDENTIALS";
     public static final String COMMANDS_PREFIX = "COMMANDS_PREFIX";
     public static final String DEFAULT_COMMANDS_PREFIX = "a!";
+    public static final String LONG_PAUSE = "      ";
 }
