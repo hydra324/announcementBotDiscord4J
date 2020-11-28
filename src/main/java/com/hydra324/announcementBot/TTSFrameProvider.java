@@ -39,11 +39,11 @@ public class TTSFrameProvider extends AudioProvider {
         return didProvide;
     }
 
-    Mono<Boolean> tts(String text){
+    Mono<Boolean> tts(String text, SsmlVoiceGender ssmlVoiceGender){
         try(TextToSpeechClient client = TextToSpeechClient.create()){
             SynthesisInput input = SynthesisInput.newBuilder().setText(text).build();
 
-            VoiceSelectionParams voiceSelectionParams = VoiceSelectionParams.newBuilder().setLanguageCode("en-US").setSsmlGender(SsmlVoiceGender.FEMALE).build();
+            VoiceSelectionParams voiceSelectionParams = VoiceSelectionParams.newBuilder().setLanguageCode("en-US").setSsmlGender(ssmlVoiceGender).build();
 
             AudioConfig audioConfig = AudioConfig.newBuilder().setAudioEncoding(AudioEncoding.OGG_OPUS).setSampleRateHertz(48_000).build();
 
