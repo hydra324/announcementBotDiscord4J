@@ -115,7 +115,7 @@ public class Bot {
                                 if(!subscribedToVoiceStateUpdates){
                                     voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates();
                                 }
-                                return ttsFrameProvider.tts(StringUtils.left( name+ "says"+ LONG_PAUSE + event.getMessage().getContent().substring((PREFIX+"tts").length()+1), 500), SsmlVoiceGender.MALE)
+                                return ttsFrameProvider.tts(getTTSMessage(name, event), SsmlVoiceGender.MALE)
                                         .filter(value -> value)
                                         .map(value -> playerManager.loadItem("output.ogg", ttsAudioResultHandler));
                             });
@@ -193,5 +193,28 @@ public class Bot {
                 .flatMap(groupedFlux -> groupedFlux.takeLast(1))
                 .singleOrEmpty()
                 .flatMap(voiceChannel -> voiceChannel.join(spec -> spec.setProvider(ttsFrameProvider)));
+    }
+
+    private static String getTTSMessage(String name, MessageCreateEvent event) {
+        final String[] rawMessage = {event.getMessage().getContent().substring((PREFIX+"tts").length()+1)};
+        // convert user mentions to user names
+        event.getMessage().getUserMentions().doOnNext(user -> {
+            // normal user
+            rawMessage[0] = rawMessage[0].replaceAll("<@"+user.getId().asString()+">",user.getUsername());
+            // user with nick name
+            rawMessage[0] = rawMessage[0].replaceAll("<@!"+user.getId().asString()+">",user.getUsername());
+        }).subscribe();
+
+        // convert role mentions to role names
+        event.getMessage().getRoleMentions().doOnNext(role -> {
+            rawMessage[0] = rawMessage[0].replaceAll("<@&"+role.getId().asString()+">", role.getName() + " role");
+        }).subscribe();
+
+        // convert channel mentions to channel names
+        event.getGuild().flatMapMany(Guild::getChannels).doOnNext(guildChannel -> {
+            rawMessage[0] = rawMessage[0].replaceAll("<#"+guildChannel.getId().asString()+">", guildChannel.getName() + " channel");
+        }).subscribe();
+
+        return StringUtils.left(name+ "says"+ LONG_PAUSE+ rawMessage[0], 500);
     }
 }
