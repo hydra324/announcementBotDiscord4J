@@ -13,7 +13,9 @@ import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
+import discord4j.core.object.entity.Role;
 import discord4j.core.object.entity.User;
+import discord4j.core.object.entity.channel.GuildChannel;
 import discord4j.core.object.entity.channel.VoiceChannel;
 import discord4j.rest.util.Color;
 import discord4j.voice.VoiceConnection;
@@ -26,6 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Arrays;
 
 import static com.hydra324.announcementBot.PropertyConstants.LONG_PAUSE;
 
@@ -198,22 +201,24 @@ public class Bot {
     private static String getTTSMessage(String name, MessageCreateEvent event) {
         final String[] rawMessage = {event.getMessage().getContent().substring((PREFIX+"tts").length()+1)};
         // convert user mentions to user names
-        event.getMessage().getUserMentions().doOnNext(user -> {
+        Flux<User> userFlux = event.getMessage().getUserMentions().doOnNext(user -> {
             // normal user
             rawMessage[0] = rawMessage[0].replaceAll("<@"+user.getId().asString()+">",user.getUsername());
             // user with nick name
             rawMessage[0] = rawMessage[0].replaceAll("<@!"+user.getId().asString()+">",user.getUsername());
-        }).subscribe();
+        });
 
         // convert role mentions to role names
-        event.getMessage().getRoleMentions().doOnNext(role -> {
-            rawMessage[0] = rawMessage[0].replaceAll("<@&"+role.getId().asString()+">", role.getName() + " role");
-        }).subscribe();
+        Flux<Role> roleFlux = event.getMessage().getRoleMentions().doOnNext(role -> {
+            rawMessage[0] = rawMessage[0].replaceAll("<@&"+role.getId().asString()+">", role.getName() + " role ");
+        });
 
         // convert channel mentions to channel names
-        event.getGuild().flatMapMany(Guild::getChannels).doOnNext(guildChannel -> {
-            rawMessage[0] = rawMessage[0].replaceAll("<#"+guildChannel.getId().asString()+">", guildChannel.getName() + " channel");
-        }).subscribe();
+        Flux<GuildChannel> channelFlux = event.getGuild().flatMapMany(Guild::getChannels).doOnNext(guildChannel -> {
+            rawMessage[0] = rawMessage[0].replaceAll("<#"+guildChannel.getId().asString()+">", guildChannel.getName() + " channel ");
+        });
+
+        Flux.concat(Arrays.asList(userFlux,roleFlux,channelFlux)).subscribe();
 
         return StringUtils.left(name+ "says"+ LONG_PAUSE+ rawMessage[0], 500);
     }
