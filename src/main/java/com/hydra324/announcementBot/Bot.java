@@ -107,22 +107,45 @@ public class Bot {
                                         .setTitle(String.valueOf(Character.toChars(10060)) + " Bot isn't in voice channel")))
                         .then(Mono.just("No voice connection to disconnect from")))
                 .then());
-        commands.put("tts",event ->
-                Mono.justOrEmpty(event.getMember()).filter(member -> !member.isBot()).flatMap(member -> {
-                    String name = member.getDisplayName();
-                    // check if voice connection is already established. If yes then use exiting connection. If no then join the channel with most active users
-                    return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get())
-                            .switchIfEmpty(getActiveVoiceChannel(event))
-                            .flatMap( voiceConnection -> {
-                                // We are going to subscribe to voice state update events if not subscribed yet
-                                if(!subscribedToVoiceStateUpdates){
-                                    voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates();
-                                }
-                                return ttsFrameProvider.tts(getTTSMessage(name, event), SsmlVoiceGender.MALE)
-                                        .filter(value -> value)
-                                        .map(value -> playerManager.loadItem("output.ogg", ttsAudioResultHandler));
-                            });
-                }).then());
+        commands.put("tts",event ->{
+            final String[] rawMessage = {event.getMessage().getContent().substring((PREFIX + "tts").length()).trim()};
+            if(StringUtils.isBlank(rawMessage[0])){
+                // if empty message then exit
+                return Mono.empty();
+            }
+            // parse any mentions
+            // convert user mentions to user names
+            Flux<User> userFlux = event.getMessage().getUserMentions().doOnNext(user -> {
+                // normal user
+                rawMessage[0] = rawMessage[0].replaceAll("<@"+user.getId().asString()+">",user.getUsername());
+                // user with nick name
+                rawMessage[0] = rawMessage[0].replaceAll("<@!"+user.getId().asString()+">",user.getUsername());
+            });
+
+            // convert role mentions to role names
+            Flux<Role> roleFlux = event.getMessage().getRoleMentions().doOnNext(role -> rawMessage[0] = rawMessage[0].replaceAll("<@&"+role.getId().asString()+">", role.getName() + " role "));
+
+            // convert channel mentions to channel names
+            Flux<GuildChannel> channelFlux = event.getGuild().flatMapMany(Guild::getChannels).doOnNext(guildChannel -> rawMessage[0] = rawMessage[0].replaceAll("<#"+guildChannel.getId().asString()+">", guildChannel.getName() + " channel "));
+
+            Flux.concat(Arrays.asList(userFlux,roleFlux,channelFlux)).blockLast();
+
+            return Mono.justOrEmpty(event.getMember()).filter(member -> !member.isBot()).flatMap(member -> {
+                String name = member.getDisplayName();
+                // check if voice connection is already established. If yes then use exiting connection. If no then join the channel with most active users
+                return gateway.getVoiceConnectionRegistry().getVoiceConnection(event.getGuildId().get())
+                        .switchIfEmpty(getActiveVoiceChannel(event))
+                        .flatMap( voiceConnection -> {
+                            // We are going to subscribe to voice state update events if not subscribed yet
+                            if(!subscribedToVoiceStateUpdates){
+                                voiceStateUpdateEventSubscription = subscribeToVoiceStateUpdates();
+                            }
+                            return ttsFrameProvider.tts(StringUtils.left(name+ "says"+ LONG_PAUSE+ rawMessage[0], 500), SsmlVoiceGender.MALE)
+                                    .filter(value -> value)
+                                    .map(value -> playerManager.loadItem("output.ogg", ttsAudioResultHandler));
+                        });
+            }).onErrorResume(e -> {e.printStackTrace();return Mono.empty();}).then();
+        });
 
         DiscordClient client = DiscordClient.create(envProperty.getEnvProperty(PropertyConstants.BOT_TOKEN));
         gateway = client.login().block();
@@ -196,30 +219,5 @@ public class Bot {
                 .flatMap(groupedFlux -> groupedFlux.takeLast(1))
                 .singleOrEmpty()
                 .flatMap(voiceChannel -> voiceChannel.join(spec -> spec.setProvider(ttsFrameProvider)));
-    }
-
-    private static String getTTSMessage(String name, MessageCreateEvent event) {
-        final String[] rawMessage = {event.getMessage().getContent().substring((PREFIX+"tts").length()+1)};
-        // convert user mentions to user names
-        Flux<User> userFlux = event.getMessage().getUserMentions().doOnNext(user -> {
-            // normal user
-            rawMessage[0] = rawMessage[0].replaceAll("<@"+user.getId().asString()+">",user.getUsername());
-            // user with nick name
-            rawMessage[0] = rawMessage[0].replaceAll("<@!"+user.getId().asString()+">",user.getUsername());
-        });
-
-        // convert role mentions to role names
-        Flux<Role> roleFlux = event.getMessage().getRoleMentions().doOnNext(role -> {
-            rawMessage[0] = rawMessage[0].replaceAll("<@&"+role.getId().asString()+">", role.getName() + " role ");
-        });
-
-        // convert channel mentions to channel names
-        Flux<GuildChannel> channelFlux = event.getGuild().flatMapMany(Guild::getChannels).doOnNext(guildChannel -> {
-            rawMessage[0] = rawMessage[0].replaceAll("<#"+guildChannel.getId().asString()+">", guildChannel.getName() + " channel ");
-        });
-
-        Flux.concat(Arrays.asList(userFlux,roleFlux,channelFlux)).subscribe();
-
-        return StringUtils.left(name+ "says"+ LONG_PAUSE+ rawMessage[0], 500);
     }
 }
